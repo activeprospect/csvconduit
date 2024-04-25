@@ -16,7 +16,7 @@ Usage: csvconduit [ options ] filename.csv leadconduit-url
 The CSV file is expected to have a header row; the first line's values 
 (normalized to lowercase, with spaces converted to underscores) will
 be used as the form post field names. The first data row will be shown as a
-preview so you can ensure everything looks right before starting.
+preview so that you can ensure everything looks right before starting.
 
 The leadconduit-url may have one of two forms. It can be a full, specific 
 submission URL, including the flow and source IDs to post to, such as: 
