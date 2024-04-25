@@ -29,9 +29,10 @@ type lcResponse struct {
 }
 
 var csvlogfile *os.File
-var csvloglinenumber int
-var lcSubmissionUrlCheck *regexp.Regexp
-var flowIdColumn, sourceIdColumn int
+var csvloglinenumber = 1
+var lcSubmissionUrlCheck = regexp.MustCompile("/flows/[a-z0-9]{24}/sources/[a-z0-9]{24}")
+var flowIdColumn = -1
+var sourceIdColumn = -1
 
 func initLog() {
 	now := time.Now()
@@ -44,7 +45,6 @@ func initLog() {
 	if err != nil {
 		panic(err)
 	}
-	csvloglinenumber = 1
 }
 
 func csvlog(outcome, leadId, reason string) {
@@ -56,8 +56,6 @@ func csvlog(outcome, leadId, reason string) {
 }
 
 func getFieldnames(rawRow []string) []string {
-	flowIdColumn = -1
-	sourceIdColumn = -1
 	fieldnames := make([]string, len(rawRow))
 
 	for i, field := range rawRow {
@@ -74,7 +72,6 @@ func getFieldnames(rawRow []string) []string {
 }
 
 func isFullLcUrl(url string) bool {
-	lcSubmissionUrlCheck := regexp.MustCompile("/flows/[a-z0-9]{24}/sources/[a-z0-9]{24}")
 	return lcSubmissionUrlCheck.MatchString(url)
 }
 
@@ -170,9 +167,6 @@ func main() {
 	if *showHelp {
 		ShowHelp()
 	}
-
-	// set regexp global
-	lcSubmissionUrlCheck = regexp.MustCompile("/flows/[a-z0-9]{24}/sources/[a-z0-9]{24}")
 
 	filename := ""
 	if len(flag.Args()) > 0 {
