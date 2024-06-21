@@ -5,7 +5,7 @@
 This utility will read the lines of a CSV (comma-separated value) file, posting
 each data line as a lead to ActiveProspect's [LeadConduit](https://activeprospect.com/leadconduit/).
 
-Usage: `csvconduit [ options ] filename.csv leadconduit-url`
+Usage: `csvconduit filename.csv leadconduit-url`
 
 The CSV file is expected to have a header row; the first line's values
 (normalized to lowercase, with spaces converted to underscores) will
@@ -22,9 +22,44 @@ Alternatively, if the CSV file includes `flow_id` and `source_id` columns, the
 
 Once started, progress will be shown as the file is processed: a period (".")
 for each successful post, the letter "f" for each failure, and the letter "e"
-for each error. A record of each result is also written to a CSV log file for
-the run, with a line for each input row to help identify which records
-from the import had trouble, and why.
+for each error. 
+
+A record of each result is also written to a CSV log file for the run, with 
+a line for each input row to help identify which records from the import 
+had trouble, and why.
+
+## example run
+
+Here's an example run for a small file, which also shows the CSV log format.
+
+```
+$ csvconduit import.csv https://app.leadconduit.com/flows/abc/sources/xyz/submit 
+read 9 data rows
+posting URL: https://app.leadconduit.com/flows/abc/sources/xyz/submit
+preview of row #1 (note: empty values will not be posted)
+                      address_1: 123 Cornelia Street
+                      address_2: 
+                          email: taylor@aol.com
+                     first_name: Taylor
+                      last_name: Swift
+                        phone_1: 5125551212
+
+proceed with posting 0, 1, or All remaining rows? (enter 0, 1, or A): a
+.....f...
+finished: 8 successes, 1 failures, 0 errors (see log_0621_0342.csv)
+
+$ cat log_0621_0342.csv
+import_line_num,import_outcome,import_lead_id,import_reason
+1,success,6675e5a9265facd94db6a763,
+2,success,6675e5a9265facd94db6a766,
+3,success,6675e5a9265facd94db6a769,
+4,success,6675e5aa265facd94db6a76c,
+5,success,6675e5aa265facd94db6a76f,
+6,failure,6675e5ab265facd94db6a772,lead.state must not be equal to FL
+7,success,6675e5ab265facd94db6a774,
+8,success,6675e5ab265facd94db6a777,
+9,success,6675e5ab265facd94db6a77a,
+```
 
 ## installation
 

@@ -11,7 +11,7 @@ func help() string {
 This utility will read the lines of a CSV (comma-separated value) file, posting
 each data line as a lead to ActiveProspect's LeadConduit.
 
-Usage: csvconduit [ options ] filename.csv leadconduit-url
+Usage: csvconduit filename.csv leadconduit-url
 
 The CSV file is expected to have a header row; the first line's values 
 (normalized to lowercase, with spaces converted to underscores) will
