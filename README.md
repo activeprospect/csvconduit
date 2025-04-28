@@ -5,7 +5,7 @@
 This utility will read the lines of a CSV (comma-separated value) file, posting
 each data line as a lead to ActiveProspect's [LeadConduit](https://activeprospect.com/leadconduit/).
 
-Usage: `csvconduit filename.csv leadconduit-url`
+Usage: `csvconduit [ -thread-count N ] filename.csv leadconduit-url`
 
 The CSV file is expected to have a header row; the first line's values
 (normalized to lowercase, with spaces converted to underscores) will
@@ -20,13 +20,20 @@ Alternatively, if the CSV file includes `flow_id` and `source_id` columns, the
 `leadconduit-url` can be the simple base URL of the app:
 'https://app.leadconduit.com'.
 
+If a `thread-count` parameter is provided, the utility will be able to post
+the given number of leads simultaneously (up to a maximum of 20). This starts
+after previewing posts is done, when you enter "a" for "all". The
+default number of threads is 1.
+
 Once started, progress will be shown as the file is processed: a period (".")
 for each successful post, the letter "f" for each failure, and the letter "e"
 for each error. 
 
 A record of each result is also written to a CSV log file for the run, with 
 a line for each input row to help identify which records from the import 
-had trouble, and why.
+had trouble, and why. If more than one thread is specified via the 
+`thread-count` parameter, the log will have to be sorted to ensure it's in the
+same order as the input (the first column is the input record's line number).
 
 ## example run
 

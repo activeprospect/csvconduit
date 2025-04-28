@@ -12,10 +12,16 @@ import (
 	"net/url"
 	"os"
 	"regexp"
-	"strconv"
 	"strings"
 	"time"
 )
+
+// CsvLine adds a line number to each input row's fields,
+// so that logged output lines can be correlated to input
+type CsvLine struct {
+	LineNumber int
+	Fields     []string
+}
 
 type lcLead struct {
 	Id string
@@ -29,7 +35,6 @@ type lcResponse struct {
 }
 
 var csvlogfile *os.File
-var csvloglinenumber = 1
 var lcSubmissionUrlCheck = regexp.MustCompile("/flows/[a-z0-9]{24}/sources/[a-z0-9]{24}")
 var flowIdColumn = -1
 var sourceIdColumn = -1
@@ -39,7 +44,7 @@ func initLog() {
 	if csvlogfile == nil {
 		now := time.Now()
 		var err error
-		csvlogfile, err = os.Create(fmt.Sprintf("log_%s.csv", now.Format("0102_0304")))
+		csvlogfile, err = os.Create(fmt.Sprintf("log_%s.csv", now.Format("0102_1504")))
 		if err != nil {
 			panic(err)
 		}
@@ -50,12 +55,11 @@ func initLog() {
 	}
 }
 
-func csvlog(outcome, leadId, reason string) {
-	_, err := fmt.Fprintf(csvlogfile, "%d,%s,%s,%s\n", csvloglinenumber, outcome, leadId, reason)
+func csvlog(lineNumber int, outcome string, leadId, reason string) {
+	_, err := fmt.Fprintf(csvlogfile, "%d,%s,%s,%s\n", lineNumber, outcome, leadId, reason)
 	if err != nil {
 		panic(err)
 	}
-	csvloglinenumber++
 }
 
 func getFieldnames(rawRow []string) []string {
@@ -124,22 +128,23 @@ func showPreview(serverUrl string, fieldnames []string, record []string, rowNum 
 	return proceedFlag
 }
 
-func post(serverUrl string, fieldnames, fields []string, showResponse bool) (outcome string) {
+func post(serverUrl string, fieldnames []string, line CsvLine, showResponse bool) (outcome string) {
 	var leadId, reason string
 	values := url.Values{}
-	for i, field := range fields {
+	for i, field := range line.Fields {
 		if field != "" {
 			values.Set(fieldnames[i], field)
 		}
 	}
 
-	resp, err := http.PostForm(getUrl(serverUrl, fields), values)
+	resp, err := http.PostForm(getUrl(serverUrl, line.Fields), values)
+
+	var body []byte
 	if err != nil {
 		outcome = "error"
 		reason = err.Error()
 	} else {
 		defer resp.Body.Close()
-		var body []byte
 		body, err = io.ReadAll(resp.Body)
 		if err != nil {
 			outcome = "error"
@@ -148,10 +153,6 @@ func post(serverUrl string, fieldnames, fields []string, showResponse bool) (out
 
 		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 			var lcr lcResponse
-
-			if showResponse {
-				fmt.Printf("\n%s\n\n", body)
-			}
 
 			err = json.Unmarshal(body, &lcr)
 			if err != nil {
@@ -164,20 +165,28 @@ func post(serverUrl string, fieldnames, fields []string, showResponse bool) (out
 			}
 		} else {
 			outcome = "error"
-			reason = strconv.Itoa(resp.StatusCode)
+			reason = fmt.Sprintf("%d: %s", resp.StatusCode, body)
 		}
 	}
 
-	csvlog(outcome, leadId, reason)
+	if showResponse {
+		message := string(body)
+		if reason != "" {
+			message = reason
+		}
+		fmt.Printf("\n%s - %s\n\n", outcome, message)
+	}
+	csvlog(line.LineNumber, outcome, leadId, reason)
 	return
 }
 
 func main() {
 	// initialize command-line flags
 	var showHelp = flag.Bool("help", false, "show help & exit")
+	var threadCount = flag.Int("thread-count", 1, "number of threads (i.e., simultaneous posts); maximum: 20")
 	flag.Parse()
 
-	if *showHelp {
+	if *showHelp || *threadCount > 20 {
 		ShowHelp()
 	}
 
@@ -223,14 +232,48 @@ func main() {
 	proceedFlag := 1 // default to make showPreview run the first time, at least
 
 	var successes, failures, errors int
-	statusChar := "."
+
+	csvLines := make(chan CsvLine, *threadCount)
+	outcomes := make(chan string, *threadCount)
+
+	// crank up the goroutines that will post leads
+	for i := 0; i < *threadCount; i++ {
+		go func() {
+			for csvLine := range csvLines {
+				outcome := post(serverUrl, fieldnames, csvLine, false)
+				outcomes <- outcome
+			}
+		}()
+	}
+
+	var outcome string
+	numProcessing := 0
+
+	// start a single goroutine to read outcomes as they come in
+	go func() {
+		for outcome := range outcomes {
+			// keep score & show progress to stdout
+			switch outcome {
+			case "success":
+				successes++
+				fmt.Print(".")
+			case "failure":
+				failures++
+				fmt.Print("f")
+			case "error":
+				errors++
+				fmt.Print("e")
+			}
+			numProcessing--
+		}
+	}()
+
 	for i, dataRow := range records[1:] {
 
 		// show preview 1st time and when user has selected to proceed with 1 row
 		if proceedFlag == 1 {
 			proceedFlag = showPreview(serverUrl, fieldnames, dataRow, i+1)
 			if proceedFlag == 0 {
-				csvlogfile.Close()
 				break
 			}
 
@@ -238,27 +281,32 @@ func main() {
 			// we only want to create the log if something will be posted
 			// (calling it more than once doesn't hurt anything)
 			initLog()
-		}
 
-		outcome := post(serverUrl, fieldnames, dataRow, proceedFlag == 1)
+			thisLine := CsvLine{i + 1, dataRow}
+			outcome = post(serverUrl, fieldnames, thisLine, proceedFlag == 1)
 
-		// keep score & show progress to stdout
-		switch outcome {
-		case "success":
-			statusChar = "."
-			successes++
-		case "failure":
-			statusChar = "f"
-			failures++
-		case "error":
-			statusChar = "e"
-			errors++
-		}
+			switch outcome {
+			case "success":
+				successes++
+				fmt.Println("Submission succeeded")
+			case "failure":
+				failures++
+				fmt.Println("Submission failed")
+			case "error":
+				errors++
+				fmt.Println("Submission errored")
+			}
 
-		// only show statusChars when posting "all"
-		if proceedFlag == 2 {
-			fmt.Print(statusChar)
+		} else {
+			// proceed must be 2 ("all"), so feed all the rest into the channel
+			numProcessing++
+			csvLines <- CsvLine{i + 1, dataRow}
 		}
+	}
+
+	// wait until everything's done
+	for numProcessing > 0 {
+		time.Sleep(10 * time.Millisecond)
 	}
 
 	logfileMsg := ""
